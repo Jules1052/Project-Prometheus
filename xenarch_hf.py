@@ -24,9 +24,11 @@ them to the HF names and rewrites the path columns of the CSV / COCO files on th
     synthetic-injections_lroc-nac_hirise/        natural terrain with one pasted / rendered hardware object (xenarch_inject.py)
     injections_moon-mars_lroc-nac_hirise.csv    data/synthetic-injections/metadata.csv: one row per injected image
     boxes-coco_synthetic_lroc-nac_hirise.json   data/synthetic-injections/boxes_coco.json
-    injected_lroc-nac_hirise/<body>_<camera>/<body>_<kind>_<camera>/<id>.png   (+ metadata.csv)
-    clean_lroc-nac_hirise/…, masks_lroc-nac_hirise/…   the untouched twin and the pixel mask, same <id>
-    contact-sheets_lroc-nac_hirise/<body>_<kind>_lroc-nac_hirise.jpg
+    realism-report_lroc-nac_hirise.csv          data/synthetic-injections/realism_report.csv: rendered designs vs real hardware
+    natural_lroc-nac_hirise/<body>_<camera>/<body>_<landform>_<camera>/<body>_<landform>_natural_<n>.png   the terrain alone
+    injected_lroc-nac_hirise/<body>_<camera>/<body>_<class>_<camera>/<id>_<n>.png   the same terrain with the object (+ metadata.csv)
+    masks_lroc-nac_hirise/…, annotation-synthetic-injection_lroc-nac_hirise/…   same sub-paths as injected: pixel mask, COCO file per image
+    contact-sheets_lroc-nac_hirise/<sheet>_lroc-nac_hirise.jpg
 raw/legacy_source-files/                     what the legacy set was made from: PDS originals (.IMG, JPEG),
                                                labels (JSON / XML), the old 'squares' tiles, manifest.csv
 
@@ -135,7 +137,8 @@ def chip_rel(rel):
 
 
 def inject_rel(rel):
-    """'injected/moon/rendered/x.png' -> 'injected_lroc-nac_hirise/moon_lroc-nac/moon_rendered_lroc-nac/x.png' (relative to INJECT)."""
+    """'injected/moon/lander/x.png' -> 'injected_lroc-nac_hirise/moon_lroc-nac/moon_lander_lroc-nac/x.png',
+    'natural/moon/volcanic/y.png' -> 'natural_lroc-nac_hirise/moon_lroc-nac/moon_volcanic_lroc-nac/y.png' (relative to INJECT)."""
     part, body, kind, name = rel.split("/", 3)
     if body not in CAMERA:
         return rel  # already renamed
@@ -348,28 +351,38 @@ def publish_labels(local=None, repo=REPO):
 
 
 def publish_injections(local=None, repo=REPO):
-    """Injected images, clean twins and masks; the table at the top of INJECT (paths relative to it, the background
-    tile as its path in this dataset), metadata.csv for the HF viewer, the COCO file, contact sheets; files under
-    INJECT that are no longer built are deleted."""
+    """Natural terrain (by body and landform), injected images, masks and one COCO file per image (by body and class); the
+    table at the top of INJECT (paths relative to it, the background tile as its path in this dataset), metadata.csv for
+    the HF viewer in both image folders, the whole-set COCO file, the check against real hardware, contact sheets. Files
+    under INJECT that are no longer built are deleted."""
     local = Path(local or LOCAL_INJECT)
+    ann = "annotation-synthetic-injection"
     ops = [CommitOperationAdd(f"{INJECT}/{inject_rel(str(f.relative_to(local)))}", str(f))
-           for part in ("injected", "clean", "masks") for f in sorted((local / part).glob("*/*/*.png"))]
+           for part in ("natural", "injected", "masks") for f in sorted((local / part).glob("*/*/*.png"))]
+    def hf_paths(d):
+        for k in ("file_name", "natural_file", "mask_file"):
+            d[k] = inject_rel(d[k])
+    for f in sorted((local / ann).glob("*/*/*.json")):
+        doc = json.loads(f.read_text()); hf_paths(doc["images"][0])
+        ops.append(CommitOperationAdd(f"{INJECT}/{inject_rel(str(f.relative_to(local)))}", json.dumps(doc, indent=1).encode()))
     rows = list(csv.DictReader(io.StringIO((local / "metadata.csv").read_text())))
     key = {"Moon": "moon", "Mars": "mars"}
     for r in rows:
-        for c in ("file_name", "clean_file", "mask_file"):
-            r[c] = inject_rel(r[c])
+        hf_paths(r); r["annotation_file"] = inject_rel(r["annotation_file"])
         r["background_file"] = f"{terrain_folder(key[r['body']])}/{terrain_rel(key[r['body']], r['background_file'])}"
-    def table(rows, strip=""):
-        buf = io.StringIO(); w = csv.DictWriter(buf, list(rows[0]), lineterminator="\n"); w.writeheader()
-        w.writerows({**r, "file_name": r["file_name"][len(strip):]} for r in rows)
+    def table(rows):
+        buf = io.StringIO(); w = csv.DictWriter(buf, list(rows[0]), lineterminator="\n"); w.writeheader(); w.writerows(rows)
         return buf.getvalue().encode()
     ops.append(CommitOperationAdd(f"{INJECT}/injections_moon-mars_lroc-nac_hirise.csv", table(rows)))
-    ops.append(CommitOperationAdd(f"{INJECT}/injected_lroc-nac_hirise/metadata.csv", table(rows, "injected_lroc-nac_hirise/")))
+    inj, nat = "injected_lroc-nac_hirise/", "natural_lroc-nac_hirise/"
+    ops.append(CommitOperationAdd(f"{INJECT}/{inj}metadata.csv", table([{**r, "file_name": r["file_name"][len(inj):]} for r in rows])))
+    ops.append(CommitOperationAdd(f"{INJECT}/{nat}metadata.csv", table([{**r, "file_name": r["natural_file"][len(nat):], "injected_file": r["file_name"]} for r in rows])))
     coco = json.loads((local / "boxes_coco.json").read_text())
     for im in coco["images"]:
-        im["file_name"] = inject_rel(im["file_name"])
+        hf_paths(im)
     ops.append(CommitOperationAdd(f"{INJECT}/boxes-coco_synthetic_lroc-nac_hirise.json", json.dumps(coco, indent=1).encode()))
+    if (local / "realism_report.csv").exists():
+        ops.append(CommitOperationAdd(f"{INJECT}/realism-report_lroc-nac_hirise.csv", str(local / "realism_report.csv")))
     ops += [CommitOperationAdd(f"{INJECT}/contact-sheets_lroc-nac_hirise/{f.stem}_lroc-nac_hirise.jpg", str(f))
             for f in sorted((local / "contact-sheets").glob("*.jpg"))]
     built = {o.path_in_repo for o in ops}

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xenarch Injection Annotations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Poppins:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="xenarch.css">
+<style>
+  :root { --ann: #ff5c5c; }
+  .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+  .filters input { font: 13px var(--mono); color: var(--ink); background: var(--paper); border: 1px solid var(--line); padding: 6px 8px; border-radius: 4px; min-width: 0; width: 220px; max-width: 100%; }
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .toggles button { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: var(--paper);
+    border: 1px solid var(--line); border-radius: 4px; padding: 7px 11px; cursor: pointer; }
+  .toggles button.on { color: var(--accent); border-color: var(--accent); }
+  .toggles button.layer.on { color: var(--ann); border-color: var(--ann); }
+  .toggles .gap { width: 10px; }
+  .key { display: flex; flex-wrap: wrap; gap: 20px; font: 12px var(--mono); color: var(--ink-2); margin: 0 0 16px; }
+  .key span { display: inline-flex; align-items: center; gap: 8px; }
+  .key svg { flex: none; width: 26px; height: 12px; overflow: visible; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .card { border: 1px solid var(--line); background: var(--paper); padding: 6px; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 340px; }
+  .pic { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 3px; background: #000; }
+  .pic img, .pic svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .pic svg { pointer-events: none; }
+  .pic svg * { fill: none; stroke: var(--ann); vector-effect: non-scaling-stroke; display: none; }
+  .pic .bb { stroke-width: 1.5; } .pic .ob { stroke-width: 1; stroke-dasharray: 3 2; } .pic .sg { stroke-width: 1; }
+  .l-bb .pic .bb, .l-ob .pic .ob, .l-sg .pic .sg { display: inline; }
+  .pic .tag { position: absolute; left: 5px; top: 5px; font: 500 9px var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 2px 5px; background: rgba(12, 22, 40, .78); color: var(--ann); }
+  .card .label { display: block; margin-top: 6px; overflow-wrap: anywhere; }
+  .card .ttl { color: var(--ink); font: 500 12px var(--font); letter-spacing: 0; text-transform: none; }
+  .card .sub { color: var(--muted); }
+  .card .bbx { color: var(--ann); text-transform: none; letter-spacing: .02em; }
+  .card a, a.dl { color: var(--accent); text-decoration: none; }
+  td.left, th.left { text-align: left; white-space: normal; }
+  td.ann { color: var(--ann); }
+  @media (max-width: 480px) { .grid { grid-template-columns: 1fr 1fr; gap: 8px; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <div class="brand">Xenarch <span class="label">Mission control</span></div>
+    <div class="links">
+      <a class="label" href="index.html">Flight log</a>
+      <a class="label" href="injections.html">Injections</a>
+      <a class="label" href="coco.html">COCO boxes</a>
+      <a class="label" href="#classes">Classes ↓</a>
+      <a class="label" href="#gallery">Gallery ↓</a>
+      <a class="label" href="#table">Table ↓</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="label">Test data · Synthetic · COCO</div>
+    <h1>Injection annotations</h1>
+    <p class="lede">Every synthetic injection with its annotation drawn in red: the bounding box and the outline of the object with its cast shadow, read straight from the COCO file of the set.</p>
+    <div class="stats" id="stats"></div>
+    <div class="coords label"><span id="gen">—</span><a class="label dl" href="injections-full/boxes_coco.json" download>Download boxes_coco.json</a></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="classes">
+    <div class="head"><span class="label">01</span><h2>By class</h2><span class="label" id="clsCount"></span></div>
+    <p class="caption">One annotation per image. The box is COCO [x, y, w, h] in the 512 × 512 image, origin top-left, and holds the object and its cast shadow; <code>bbox_object_only</code> is the object without the shadow. Box sizes are medians in pixels.</p>
+    <div class="scroll"><table id="clsTbl"></table></div>
+  </section>
+
+  <section id="gallery">
+    <div class="head"><span class="label">02</span><h2>Annotated images</h2><span class="label" id="galCount"></span></div>
+    <div class="filters">
+      <select id="fcls" aria-label="Class"><option value="all">All classes</option></select>
+      <select id="fbody" aria-label="Body"><option value="all">Moon and Mars</option><option value="Moon">Moon</option><option value="Mars">Mars</option></select>
+      <select id="fkind" aria-label="Kind"><option value="all">All kinds</option><option value="rendered">Rendered</option><option value="real-sprite">Real cut-out</option></select>
+      <select id="fhw" aria-label="Design"><option value="all">All designs</option></select>
+      <select id="fsplit" aria-label="Split"><option value="all">Train and validation</option><option value="validation">Validation</option><option value="train">Train</option></select>
+      <select id="fsort" aria-label="Order"><option value="id">Order: as generated</option><option value="cls">Order: by class</option><option value="big">Order: largest box first</option><option value="small">Order: smallest box first</option></select>
+      <input id="q" type="search" placeholder="Search design, landform, frame" aria-label="Search">
+    </div>
+    <div class="toggles">
+      <button id="tZoom" class="on">Zoom on the object</button><button id="tFull">Whole image</button><span class="gap"></span>
+      <button id="tBB" class="layer on">Box</button><button id="tSG" class="layer on">Outline</button><button id="tOB" class="layer">Object-only box</button>
+    </div>
+    <div class="key">
+      <span><svg viewBox="0 0 26 12"><rect x="1" y="1" width="24" height="10" fill="none" stroke="#ff5c5c" stroke-width="1.5"/></svg>BOX · OBJECT + SHADOW</span>
+      <span><svg viewBox="0 0 26 12"><path d="M2 9 Q6 1 13 4 T24 6 Q20 12 12 10 Z" fill="none" stroke="#ff5c5c"/></svg>OUTLINE · SEGMENTATION</span>
+      <span><svg viewBox="0 0 26 12"><rect x="1" y="1" width="24" height="10" fill="none" stroke="#ff5c5c" stroke-dasharray="3 2"/></svg>OBJECT-ONLY BOX</span>
+    </div>
+    <p class="caption">The zoom shows 112 × 112 px around the object at 2x; the whole image is 512 × 512. INJECTED and MASK open the full-size PNGs, COCO the annotation file of that image.</p>
+    <div class="grid l-bb l-sg" id="grid"></div>
+  </section>
+
+  <section id="table">
+    <div class="head"><span class="label">03</span><h2>Annotation table</h2><span class="label" id="tblCount"></span></div>
+    <p class="caption">The same rows as the gallery. Area is the pixel count of object plus shadow; polygons is the number of separate outlines.</p>
+    <div class="scroll"><table id="tbl"></table></div>
+  </section>
+</main>
+
+<footer><div class="wrap label">Annotations by xenarch_inject.py · boxes_coco.json of synthetic-injections_lroc-nac_hirise/ · synthetic test data, never ground truth</div></footer>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let R = [], N = 512, V = '', zoom = true;
+const $ = id => document.getElementById(id);
+const median = a => a.length ? [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] : 0;
+Promise.all([fetch('injections.json?v=' + Date.now()).then(r => r.json()), fetch('injections-full/boxes_coco.json?v=' + Date.now()).then(r => r.json())])
+  .then(([d, c]) => init(d, c)).catch(() => {
+    $('stats').innerHTML = '<div class="stat"><span class="label">No injections.json or boxes_coco.json</span><b>run xenarch_inject.py --dashboard</b></div>';
+  });
+function init(d, c) {
+  N = d.size; V = d.generated.replace(/\D/g, '');
+  const cats = Object.fromEntries(c.categories.map(k => [k.id, k.name]));
+  const ann = {}, file = Object.fromEntries(c.images.map(i => [i.id, i.file_name]));
+  c.annotations.forEach(a => (ann[file[a.image_id]] = ann[file[a.image_id]] || []).push(a));
+  R = d.rows.filter(r => ann[r.img]).map(r => { const a = ann[r.img][0];
+    return {...r, cat: cats[a.category_id], bbox: a.bbox, obox: a.bbox_object_only, seg: a.segmentation, area: a.area}; });
+  $('gen').textContent = 'Generated ' + d.generated + ' · COCO ' + (c.info.version || '');
+  const n = f => R.filter(f).length;
+  $('stats').innerHTML = [['Images', d.rows.length], ['Annotations', c.annotations.length], ['Classes', new Set(R.map(r => r.cat)).size],
+    ['Moon', n(r => r.body === 'Moon')], ['Mars', n(r => r.body === 'Mars')],
+    ['Median box', median(R.map(r => r.bbox[2])) + ' × ' + median(R.map(r => r.bbox[3])) + ' px'], ['Not annotated', d.rows.length - R.length]]
+    .map(([k, v]) => `<div class="stat"><span class="label">${k}</span><b>${v}</b></div>`).join('');
+  classes();
+  const opt = (id, v, t) => { const e = document.createElement('option'); e.value = v; e.textContent = t; $(id).appendChild(e); };
+  [...new Set(R.map(r => r.cat))].sort().forEach(k => opt('fcls', k, k.replace(/-/g, ' ')));
+  [...new Map(R.map(r => [r.hw, r.name])).entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([k, t]) => opt('fhw', k, t));
+  const p = new URLSearchParams(location.search);
+  for (const [k, id] of [['cls', 'fcls'], ['body', 'fbody'], ['hw', 'fhw'], ['split', 'fsplit']]) if (p.get(k)) $(id).value = p.get(k);
+  ['fcls', 'fbody', 'fkind', 'fhw', 'fsplit', 'fsort'].forEach(id => $(id).onchange = render);
+  let t; $('q').oninput = () => { clearTimeout(t); t = setTimeout(render, 150); };
+  $('tZoom').onclick = () => { zoom = true; $('tZoom').classList.add('on'); $('tFull').classList.remove('on'); render(); };
+  $('tFull').onclick = () => { zoom = false; $('tFull').classList.add('on'); $('tZoom').classList.remove('on'); render(); };
+  for (const [id, k] of [['tBB', 'l-bb'], ['tSG', 'l-sg'], ['tOB', 'l-ob']])
+    $(id).onclick = () => $(id).classList.toggle('on', $('grid').classList.toggle(k));
+  render();
+}
+function classes() {
+  const g = {}; R.forEach(r => (g[r.cat] = g[r.cat] || []).push(r));
+  const rows = Object.entries(g).sort((a, b) => b[1].length - a[1].length);
+  $('clsCount').textContent = rows.length + ' classes';
+  $('clsTbl').innerHTML = '<tr><th class="left">Class</th><th>Annotations</th><th>Moon</th><th>Mars</th><th>Validation</th><th>Designs</th><th>Box w × h</th><th>Object-only w × h</th><th>Area px</th><th>Show</th></tr>' +
+    rows.map(([k, v]) => { const o = v.filter(r => r.obox);
+      return `<tr><td class="left ann">${esc(k)}</td><td>${v.length}</td><td>${v.filter(r => r.body === 'Moon').length}</td><td>${v.filter(r => r.body === 'Mars').length}</td>` +
+        `<td>${v.filter(r => r.split === 'validation').length}</td><td>${new Set(v.map(r => r.hw)).size}</td><td>${median(v.map(r => r.bbox[2]))} × ${median(v.map(r => r.bbox[3]))}</td>` +
+        `<td>${o.length ? median(o.map(r => r.obox[2])) + ' × ' + median(o.map(r => r.obox[3])) : '—'}</td><td>${median(v.map(r => r.area))}</td>` +
+        `<td><a class="dl" href="#gallery" data-c="${esc(k)}">Open</a></td></tr>`; }).join('');
+  document.querySelectorAll('#clsTbl a[data-c]').forEach(a => a.onclick = () => { $('fcls').value = a.dataset.c; render(); });
+}
+function filtered() {
+  const v = id => $(id).value, q = v('q').toLowerCase();
+  const rows = R.filter(r => (v('fcls') === 'all' || r.cat === v('fcls')) && (v('fbody') === 'all' || r.body === v('fbody')) && (v('fkind') === 'all' || r.kind === v('fkind')) &&
+    (v('fhw') === 'all' || r.hw === v('fhw')) && (v('fsplit') === 'all' || r.split === v('fsplit')) &&
+    (!q || (r.name + ' ' + r.hw + ' ' + r.cat + ' ' + r.landform + ' ' + r.frame + ' ' + r.id).toLowerCase().includes(q)));
+  const s = v('fsort'), size = r => r.bbox[2] * r.bbox[3];
+  if (s === 'cls') rows.sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
+  else if (s === 'big') rows.sort((a, b) => size(b) - size(a)); else if (s === 'small') rows.sort((a, b) => size(a) - size(b));
+  return rows;
+}
+function overlay(r) {
+  // image pixel i covers [i, i+1] in the viewBox; polygon vertices are at pixel centres, hence the half-pixel shift
+  const [zx, zy, zs] = zoom ? r.zoom : [0, 0, N], rect = (b, c) => b ? `<rect class="${c}" x="${b[0]}" y="${b[1]}" width="${b[2]}" height="${b[3]}"/>` : '';
+  const path = r.seg.map(p => 'M' + p.join(' ') + 'Z').join('');
+  return `<svg viewBox="${zx} ${zy} ${zs} ${zs}" preserveAspectRatio="none" aria-hidden="true">${rect(r.bbox, 'bb')}${rect(r.obox, 'ob')}` +
+    (path ? `<path class="sg" transform="translate(.5 .5)" d="${path}"/>` : '') + '</svg>';
+}
+function render() {
+  const rows = filtered();
+  $('galCount').textContent = rows.length + (rows.length === 1 ? ' image' : ' images');
+  $('grid').innerHTML = rows.map(r => {
+    const src = 'injections-full/thumbs/' + r.id + (zoom ? '_inj.jpg' : '_full.jpg') + '?v=' + V;
+    return `<div class="card"><div class="pic"><img src="${src}" loading="lazy" alt="${esc(r.name)} injected, annotation in red">${overlay(r)}<span class="tag">${esc(r.cat)}</span></div>` +
+      `<span class="label ttl">${esc(r.name)}</span>` +
+      `<span class="label bbx">bbox [${r.bbox.join(', ')}] · ${r.area} px</span>` +
+      `<span class="label sub">${r.body} · ${r.res} m/px · sun ${r.inc.toFixed(0)}° · ${r.kind === 'rendered' ? 'rendered' : 'real cut-out'} · ${r.split === 'validation' ? 'VAL' : 'TRAIN'}</span>` +
+      `<span class="label sub"><a href="injections-full/${esc(r.img)}" target="_blank" rel="noopener">Injected</a> · <a href="injections-full/${esc(r.mask)}" target="_blank" rel="noopener">Mask</a> · <a href="injections-full/${esc(r.ann)}" target="_blank" rel="noopener">COCO</a></span></div>`;
+  }).join('');
+  $('tblCount').textContent = rows.length + ' rows';
+  $('tbl').innerHTML = '<tr><th>Image</th><th>Class</th><th class="left">Design</th><th>Body</th><th>Kind</th><th>bbox x</th><th>y</th><th>w</th><th>h</th><th>Object-only</th><th>Area px</th><th>Polygons</th><th>Shadow px</th><th>Context</th><th>Split</th></tr>' +
+    rows.map(r => `<tr><td>${esc(r.id)}</td><td class="ann">${esc(r.cat)}</td><td class="left">${esc(r.name)}</td><td>${r.body}</td><td>${r.kind}</td>` +
+      `<td class="ann">${r.bbox[0]}</td><td class="ann">${r.bbox[1]}</td><td class="ann">${r.bbox[2]}</td><td class="ann">${r.bbox[3]}</td><td>${r.obox ? r.obox.join(', ') : '—'}</td>` +
+      `<td>${r.area}</td><td>${r.seg.length}</td><td>${r.shadow}</td><td>${esc(r.ctx)}</td><td>${r.split}</td></tr>`).join('');
+}
+</script>
+</body>
+</html>
