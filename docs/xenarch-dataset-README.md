@@ -21,6 +21,8 @@ configs:
     data_files: human-traces_labels/labels_moon-mars_lroc-nac_hirise.csv
   - config_name: synthetic_injections
     data_dir: synthetic-injections_lroc-nac_hirise/injected_lroc-nac_hirise
+  - config_name: synthetic_injections_natural
+    data_dir: synthetic-injections_lroc-nac_hirise/natural_lroc-nac_hirise
   - config_name: injections
     data_files: synthetic-injections_lroc-nac_hirise/injections_moon-mars_lroc-nac_hirise.csv
   - config_name: catalog
@@ -85,14 +87,19 @@ human-traces_labels/                         every labelled human trace as a 256
   contact-sheets_lroc-nac_hirise/              one preview sheet per class (box outlined) + overview
 synthetic-injections_lroc-nac_hirise/        SYNTHETIC test data: natural terrain + one injected hardware object
   injections_moon-mars_lroc-nac_hirise.csv     THE table: one row per injected image (what was injected, where, how)
-  boxes-coco_synthetic_lroc-nac_hirise.json    COCO boxes (object + its cast shadow)
-  injected_lroc-nac_hirise/                    1,840 images of 512×512 with the object
+  boxes-coco_synthetic_lroc-nac_hirise.json    the same annotations for the whole set in one COCO file
+  realism-report_lroc-nac_hirise.csv           every rendered design against every real frame of that hardware
+  natural_lroc-nac_hirise/                     the natural terrain alone, by what it shows
     metadata.csv
-    moon_lroc-nac/moon_<kind>_lroc-nac/<id>.png     kind: rendered, real-sprite, null-control
-    mars_hirise/mars_<kind>_hirise/<id>.png
-  clean_lroc-nac_hirise/                       the same crops without the object (same sub-paths and ids)
-  masks_lroc-nac_hirise/                       pixel masks: 1 object, 2 its cast shadow, 3 context (halo, tracks, ejecta)
-  contact-sheets_lroc-nac_hirise/              clean | injected pairs per body and kind, and an overview
+    moon_lroc-nac/moon_<landform>_lroc-nac/moon_<landform>_natural_<n>.png
+    mars_hirise/mars_<landform>_hirise/mars_<landform>_natural_<n>.png
+  injected_lroc-nac_hirise/                    1,431 images of 512×512: the same terrain with the object, by what was added
+    metadata.csv
+    moon_lroc-nac/moon_<class>_lroc-nac/moon_<kind>_<object>_<n>.png     kind: rendered, real-sprite
+    mars_hirise/mars_<class>_hirise/mars_<kind>_<object>_<n>.png
+  masks_lroc-nac_hirise/                       pixel masks, same sub-paths as injected: 1 object, 2 its cast shadow, 3 context
+  annotation-synthetic-injection_lroc-nac_hirise/   one COCO file per image, same sub-paths as injected
+  contact-sheets_lroc-nac_hirise/              real-vs-model (start here), zoomed galleries, designs, clean | injected pairs per body and kind
 raw/legacy_source-files/                       what the legacy set was made from (not needed for training)
   <body>_<camera>_originals/                   Clementine JPEGs, HiRISE .IMG EDRs as downloaded
   <body>_<camera>_pds-labels/                  one PDS label (JSON / XML) per image, summarised in the legacy metadata.csv
@@ -223,38 +230,52 @@ unmistakable); treat `medium` boxes as likely, not certain.
 
 ## synthetic-injections_lroc-nac_hirise/
 
-Injection-recovery test set, built by `xenarch_inject.py`. Every image is a 512×512 crop of a natural-terrain tile
-(`background_file`, a path in this dataset) with one object added; `clean_file` is the same crop untouched and
-`mask_file` marks the object (1), its cast shadow (2) and its context (3). Three kinds:
+Injection-recovery test set, built by `xenarch_inject.py`. Every row of the table is a pair of 512×512 images:
+`natural_file`, a crop of a natural-terrain tile (`background_file`, a path in this dataset), filed by body and landform; and
+`file_name`, the same crop with one object added, filed by body and object class. The two end in the same number. The natural
+image has the same `gain`, `gamma` and resampling as its injected twin, so the only difference between them is the object.
+`mask_file` marks the object (1), its cast shadow (2) and everything else that changed (3: blast zone, tracks, ejecta, faint fringe); no pixel outside the mask differs by more than 2 DN. `annotation_file` is a complete COCO file for that image:
+category, `bbox` of the object with its shadow in pixels `[x, y, w, h]`, `bbox_object_only`, `segmentation` polygons, plus the
+object's name and size. Category ids are the same in every file and in `boxes-coco_synthetic_lroc-nac_hirise.json`. Two kinds:
 
 | `kind` | What | Images |
 |---|---|---|
-| `rendered` | past and new hardware built from simple 3D shapes at real dimensions, lit by the tile's own sun (Lambert shading, cast shadows, saturation of bright foil) | 1,025 |
-| `real-sprite` | real hardware cut out of the LROC / HiRISE crops (high-confidence boxes), rotated so its shadow follows the tile's sun, rescaled to the tile's m/px, only into tiles whose sun incidence is within 15° of the source frame's | 526 |
-| `null-control` | a patch of natural terrain from another tile pasted through the same pipeline, sized like the objects: a detector that flags these sees paste artifacts, not objects | 289 |
+| `rendered` | past and new hardware built from parts at real dimensions (raised bodies, tapering upper structures, masts, panels, wheels), lit by the tile's own sun | 949 |
+| `real-sprite` | real hardware cut out of the LROC / HiRISE crops (high-confidence boxes): its bright body and the shadow touching it, without the halo, turned by its own body-to-shadow direction onto the tile's sun, only shrunk, only into tiles whose sun incidence is within 12° of the source frame's | 482 |
 
 Rendered designs (`hardware_id`, `era`): Moon past: Apollo LM descent stage, Surveyor, Luna 16-24, Lunokhod, Apollo
 LRV, Chang'e 3/4 lander, Yutu, a spacecraft impact crater; Moon new: Nova-C, Blue Ghost, Blue Moon MK1, Starship HLS,
 a surface habitat, the Lunar Terrain Vehicle, a vertical solar array, a fission power unit; Mars past: Viking,
 Pathfinder, Phoenix / InSight, Spirit / Opportunity, Curiosity / Perseverance, a heat shield, a backshell with its
-parachute; Mars new: Starship, a habitat dome, the Sample Retrieval Lander, a pressurised rover.
+parachute; Mars new: a habitat dome, the Sample Retrieval Lander, a pressurised rover.
 
-What varies, all in the table: object scale (`scale_factor` 0.85–1.2), resolution (`resolution_m_px`: the tile's
-own, and on the Moon a coarser camera, `camera_downscale` 1.5 or 2), sun (`incidence_deg`, `sun_azimuth_image_deg`
-of the tile), brightness (`albedo_factor`, `contrast_factor`), camera (`psf_sigma_px`, the tile's `noise_sigma` added
-to the object, `gain`, `gamma` on both twins), terrain (`landform`, any spot of the tile), context (`context`:
-`blast-zone` around landers, `tracks` behind rovers, `footpaths` around crewed landers and habitats; impact
-craters always bring bright ejecta). `object_px` is the object's size in pixels (median ~9 px: most objects are small,
-as real hardware is); `shadowed_fraction` is the share of the crop in shadow.
+The renderer is calibrated on the real hardware: `realism-report_lroc-nac_hirise.csv` and
+`contact-sheets_lroc-nac_hirise/real-vs-model_lroc-nac_hirise.jpg` compare every design with every real frame of that hardware at
+the same sun and m/px, measured by the same code. The tiles are stretched 8-bit, so one unit of ground radiance is far more than
+the DN of the ground (`radiance_scale_dn`, estimated from the tile's contrast and sun); composited in radiance, then blurred, then
+clipped, with bright parts rolling off instead of turning into flat white shapes (`body_contrast_dn`). Shadows are swept from each part at its
+own height, so they taper and detach, and bend over the terrain (relief from the tile's shading); their edge width is tuned on real
+hardware and natural shadows, and they are as dark as the natural shadows of their own terrain (`shadow_soft_px`, `shadow_floor_dn`). Rendered objects are softer than real hardware (no saturated bodies, lighter shadows, shorter shadows), so recall measured on them is a cautious figure. Heights match the real shadows (Apollo LM: 3.5 m).
+Objects stand on flat-ish lit ground, not on crater walls or in shadow.
+
+What varies, all in the table: object size (`scale_factor` 0.92–1.08: hardware has fixed dimensions; impact craters 10–35 m,
+`width_m`), resolution (`resolution_m_px`: the tile's own, and on the Moon a coarser camera, `camera_downscale` 1.5 or 2), sun
+(`incidence_deg`, `sun_azimuth_image_deg` of the tile), brightness (`albedo_factor`, `contrast_factor`), camera (`psf_sigma_px`
+measured on the tile, its `noise_sigma` on the object, `gain`, `gamma` on both twins), terrain (`landform`), context (`context`,
+`+`-joined: `blast-zone` around landers, `impact-scar` around heat shields and backshells, `tracks` behind rovers, `footpaths`
+around crewed sites; impact craters always bring ejecta). `object_px` is the object's size in pixels; `shadow_length_m` its
+longest shadow; `shadowed_fraction` the share of the crop in shadow. A design only goes into tiles where its shadow stays under 24
+px, the upper range common on real hardware (height × tan(incidence) / resolution; `shadow_length_px` is the reach measured on the mask along the sun, from the middle of the body, `shadow_area_px` its area), so tall designs appear only at high sun and Starship (50 m) only on the Moon. Faint HiRISE
+tiles with fewer than 20 grey levels are not used as backgrounds.
 
 `split` is the background tile's: **evaluate detectors trained on `natural-terrain_training/` on `validation`
 only** (backgrounds never seen in training; validation tiles carry extra injections for that reason).
 
-Limits: the sun azimuth in the image is not in the archive labels; it is estimated from the tile's own shading
-(`sun_azimuth_confidence`, low = weak shading at high sun, where shadows are short anyway). Rendered objects are
-height fields seen from straight above (no overhangs, simple shapes, Lambert surfaces); real sprites carry the
-lighting of their source frame (matched within 15° of incidence). Synthetic data: use it to measure sensitivity,
-never as ground truth.
+Limits: the sun azimuth in a raw frame is computed from latitude, incidence and season up to its mirror images, and the right
+one picked with the tile's shading (`sun_azimuth_source`; shading and geometry agree within a median of 5° on the Moon, 16° on
+Mars). `radiance_scale_dn` is an estimate. Rendered objects are simple parts seen from straight above; new hardware has no real
+frame to check against, only the same rules. Real cut-outs carry the lighting of their source frame. Synthetic data: use it to
+measure sensitivity, never as ground truth.
 
 ## Credit
 
